@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <vector>
+#include <random>
 // #include "transforms.h" // Include the header file for the Transform class
 // #include <fftw3.h>
 #ifndef M_PI
@@ -10,7 +11,19 @@
 #endif
 
 
+
 using namespace std;
+
+std::vector<std::complex<double>> hermitian(const std::vector<std::complex<double>>& vec) {
+    std::vector<std::complex<double>> result(vec.size());
+
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+        result[i] = std::conj(vec[i]);
+    }
+
+    return result;
+}
 
 // bit reversal permutation for real numbers
 int reverseBits(int num, int log2n) {
@@ -132,24 +145,25 @@ std::vector<std::complex<double>> convolution(const std::vector<std::complex<dou
 }
 int main() {
     // Sample input sequence of 8 numbers
-    vector<complex<double>> dataIn = { 1, 2, 3, 4, 5, 6, 7, 8 }, Y, Y_conv;
-    Y_conv = convolution(dataIn, dataIn);
+    vector<complex<double>> dataIn = { 1, 2, 3, 4, 5, 6, 7, 8 }, Y, Y_conv, Y_T;
+    Y_T = hermitian(dataIn);
+    Y_conv = convolution(Y_T, dataIn);
 
 
     // Call the fft method to obtain output signal from the input data
     Y = fft_stride(dataIn);
 
     
-    cout << "Fast-Fourier Transform (FFT) using Stride Permutation" << "\n" << endl;
+    cout << "8-Point Fast-Fourier Transform (FFT) using Stride Permutation" << "\n" << endl;
 
     // Print the results of the FFT
     for (auto& val : Y) { // C++11 range-based for loop
-        cout << val << "\n" << endl;
+        cout << val <<  endl;
         
         
 
     }
-    cout << "Convolution using FFT" << "\n" << endl;
+    cout <<"\n " << "Convolution using FFT: " << "\n" << endl;
 
     // Print the results of the FFT
     for (auto& val : Y_conv) { // C++11 range-based for loop
