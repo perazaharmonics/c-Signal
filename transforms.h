@@ -6,7 +6,8 @@
 #include <cmath>
 #include <iostream>
 #include <valarray>
-#include <fftw3.h>
+
+#include <cstdint>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -20,14 +21,15 @@ enum WindowType {
     CUSTOM
 };
 
-template <typename T>
+template <typename T> // Zero pad the input to the next power of 2
 std::vector<T> zeroPadToNextPowerOf2(const std::vector<T>& input) {
     int currentSize = input.size();
 
     // If the current size is already a power of 2, just return the input.
-    if ((currentSize & (currentSize - 1)) == 0) {
+    if ((currentSize & (currentSize - 1)) == 0); {
         return input;
     }
+
 
     // Calculate the next power of 2 greater than currentSize.
     int nextPowerOf2 = std::pow(2, std::ceil(std::log2(currentSize)));
@@ -40,8 +42,10 @@ std::vector<T> zeroPadToNextPowerOf2(const std::vector<T>& input) {
 
     return padded;
 }
+
 class Transforms {
     // Firstly, we need to declare the methods that we will be using in the class
+   
 
 
 
@@ -102,10 +106,10 @@ public: std::vector<std::complex<double>> convolution(const std::vector<std::com
     }
 
     // Perform the IFFT on the result
-    std::vector<std::complex<double>> result = ifft(X);
-    result.resize(n + m - 1);  // Truncate or resize to get the correct convolution size
+    ifft(X);
+    X.resize(n + m - 1);  // Truncate or resize to get the correct convolution size
 
-    return result;
+    return X;
 }
 private:
     std::vector<std::complex<double>> twiddle_factors;
@@ -119,11 +123,12 @@ private:
         }
     }
 
-public:  void fft(std::vector<std::complex<double>>& data) {
+    std::vector<std::complex<double>> fft(const std::vector<std::complex<double>>& data) {
         int n = data.size();
 
-        // Base case: if input size is 1, nothing to do
-        if (n <= 1) return;
+
+        // Base case: if input size is 1, return the input
+        if (n <= 1) return data;
 
         // Divide step: Split the input into even and odd parts
         std::vector<std::complex<double>> data_even(n / 2), data_odd(n / 2);
@@ -133,22 +138,22 @@ public:  void fft(std::vector<std::complex<double>>& data) {
         }
 
         // Conquer step: Recursively apply FFT to both halves
-        fft(data_even);
-        fft(data_odd);
+        std::vector<std::complex<double>> Y_even = fft(data_even);
+        std::vector<std::complex<double>> Y_odd = fft(data_odd);
 
-        twiddle(n); // Precompute twiddle factors
+        // Get the twiddle factors
+        twiddle(n);
+        
 
         // Combine step: Merge the results of the two halves
+        std::vector<std::complex<double>> Y(n);  // The result
         for (int k = 0; k < n / 2; k++) {
-
-            // Compute the complex exponential factor
-            std::complex<double> t = twiddle_factors[k] * data_odd[k];
-
-            // Combine even and odd parts with the complex exponential factor
-            data[k] = data_even[k] + t;
-            data[k + n / 2] = data_even[k] - t;
+            std::complex<double> t = twiddle_factors[k] * Y_odd[k];
+            Y[k] = Y_even[k] + t;
+            Y[k + n / 2] = Y_even[k] - t;
         }
-        
+
+        return Y;
     }
 
       // Inverse FFT
@@ -218,6 +223,40 @@ public:  void fft(std::vector<std::complex<double>>& data) {
         }
         return output_array;
     }
+    // IFFT By Stride Permutation
+    std::vector<std::complex<double>> ifft_stride(const std::vector<std::complex<double>>& data) {
+        int n = data.size();
+        if (n <= 1) return data;
+
+        // Re-order the input data by stride permutation (bit-reversal)
+        std::vector<std::complex<double>> output_array = stridepermutation(data);
+
+        std::vector<std::complex<double>> twiddle(n);
+        for (int k = 0; k < n; ++k) {
+            twiddle[k] = std::polar(1.0, 2 * M_PI * k / n);
+        }
+
+        for (int s = 1; s <= std::log2(n); ++s) {
+            int m = std::pow(2, s);
+            int half_m = m / 2;
+
+            for (int k = 0; k < n; k += m) {
+                for (int j = 0; j < half_m; ++j) {
+                    std::complex<double> t = twiddle[j * n / m] * output_array[k + half_m + j];
+                    std::complex<double> u = output_array[k + j];
+                    output_array[k + j] = u + t;
+                    output_array[k + half_m + j] = u - t;
+                }
+            }
+        }
+
+        // Normalization after IFFT
+        for (int i = 0; i < n; ++i) {
+            output_array[i] /= n;
+        }
+
+        return output_array;
+    }
 
 public:
     // STFT
@@ -272,10 +311,11 @@ public:
             // Multiply by the window function and overlap-add into the result
             for (int n = 0; n < window_size; n++) {
                 reconstructed_signal[w * hop_size + n] += segment[n] * hanning(n);
-            }return reconstructed_signal;
+            }
 
         }
 
+        return reconstructed_signal;
         
     }
 
