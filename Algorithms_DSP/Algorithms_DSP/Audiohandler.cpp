@@ -57,3 +57,14 @@ void AudioHandler::setAudioData(const std::vector<double>& data) {
 std::vector<double>& AudioHandler::getAudioData() {
     return audioData;
 }
+
+void AudioHandler::padToNextPowerOfTwo() {
+    // Calculate the next power of 2 greater than the current size
+    int nextPowerOfTwo = 1;
+    while (nextPowerOfTwo < audioData.size()) {
+        nextPowerOfTwo *= 2;
+    }
+
+    // Resize the vector. New elements are initialized to 0.
+    audioData.resize(nextPowerOfTwo);
+}
