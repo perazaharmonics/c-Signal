@@ -30,7 +30,7 @@ int main()
 
     // Open a 16-bit per-channel, one-channel WAV formatted output file
     try {
-        output.openFile("BB_Anal2.wav", 1, FileWrite::FILE_WAV, Stk::STK_SINT16);
+        output.openFile("Test_Signal.wav", 1, FileWrite::FILE_WAV, Stk::STK_SINT16);
     }
     catch (StkError&) {
         std::cerr << "Could not open the output file." << std::endl;
