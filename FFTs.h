@@ -463,11 +463,11 @@ complexV_t<double> SignalOps::ISTFT(
     int step = wSiz * (1 - overlap / 100.0);
 
     // Calculate the length of the original signal from the STFT segs
-    int signal_length = step * (sMat.size() - 1) + wSiz;
+    int len = step * (sMat.size() - 1) + wSiz;
 
     // Initialize the result signal and the overlap count for normalization
-    complexV_t<double> sig(signal_length, 0.0);    // Initialize the result signal
-    realV_t<double> nOverlaps(signal_length, 0.0); // Initialize the overlap count
+    complexV_t<double> sig(len, 0.0);    // Initialize the result signal
+    realV_t<double> nOverlaps(len, 0.0); // Initialize the overlap count
 
     // Generate the window to be applied during the inverse process
     realV_t<double> window = GenerateWindow(w, wSiz);
