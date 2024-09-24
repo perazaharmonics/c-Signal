@@ -38,14 +38,27 @@ public:
 
     // Accessors
     const inline vector<T> GetSignal (void) const { return signal; }
+    inline void SetSignal (const vector<complex<T>>& s) {singal=s;}
     const inline int GetSamples (void) const { return length; }
-    const inline double GetSampleRate (void) const { return samplingFreq; }
+    inline void SetSamples (const int N) {length=N;}
+    const inline double GetSampleRate (void) const { return sRate; }
+    inline void SetSampleRate (const double fs) {sRate=fs;}
     const inline vector<complex<T>> GetTwiddles (void) const { return twiddles; }
+    inline void SetSubCarrier const (const vector<complex<T>> &s) { subCarrier = s; }
+    const inline vector<complex<T>> GetSubCarrier (void) { return subCarrier; } 
     
-    
-    
+     // Operator Overloads
+    vector<complex<T>> operator*(const vector<complex<T>> &s, const vector<complex<T>> &h);
+    vector<complex<T>> operator*(const vector<complex<T>> &s, const vector<T> &h);
+    vector<complex<T>> operator*(const vector<T> &s, const vector<complex<T>> &h);
+    vector<complex<T>> operator*(const vector<T> &s, const vector<T> &h);
+    vector<complex<T>> operator+(const vector<complex<T>> &s, const vector<complex<T>> &y);
+   
     
     // Spectral Manipulation methods.
+    vector<complex<T>> Shift(const vector<complex<T>>& s, const double fShift, const double fs);
+    vector<vector<complex<T>>> Sweep (const vector<complex<T>>&s, const double fStart,const double fCenter, const double fStop,const double step,const double fs,const WindowType &w, const int wSiz, const float ovlap);
+    
     vector<complex<T>> FFTStride(const vector<complex<T>> &s);
     vector<complex<T>> IFFTStride(const vector<complex<T>> &s);
     vector<complex<T>> FFT(const vector<complex<T>>& s);
@@ -54,8 +67,9 @@ public:
     vector<vector<complex<T>>> STFT(const vector<complex<T>> &s, const WindowType &w, const int wSiz, const float ovlap);
     vector<complex<T>> ISTFT(const vector<vector<complex<T>>> &sMat, const WindowType &w, const int wSiz, const float ovlap);
     vector<complex<T>> OLAProcessor(const vector<complex<T>> &s, const vector<complex<T>> &h, const WindowType &w, const int wSiz, const float ovlap);
+    
     // In reality this can only be a real (due to magnitude) and double
-    // to prevent aliasing.
+    // (to prevent aliasing).
     vector<T> WelchPSD (const vector<T> &s, const WindowType& w, const int wSiz, const float ovlap, const int fftSiz);
 protected:
     int UpperLog2(const int N);
@@ -64,17 +78,19 @@ protected:
     vector<T> ZeroPad(const vector<T> &s);
     vector<T> Upsample(const vector<T> &s, const int factor);
     vector<T> Downsample(const vector<T> &s, const int factor);
+    vector<T> SetRBW(double rbw,double fs);
     vector<int> ToInt(const vector<complex<T>> &s);
     vector<double> ToReal (const vector<complex<T>> &s);    
 
 private:
     vector<complex<T>> TwiddleFactor(int N); // Precompute the Twiddle for the FFT.
     vector<T> signal;                        // The signal to process.
+    vector<T> subCarrier;                    // 
     WindowType window;                       // The window to apply to the signal.
     const int windowSize;                    // The size of the window.
     const float overlap;                     // The overlap factor.
     vector<complex<T>> twiddles;             // Precomputed twiddle factors.
-    const double samplingFreq;               // The rate at which we sampled the RF.
+    const double sRate;                      // The rate at which we sampled the RF.
     const int length;                        // The length of the signal.
 };
 
@@ -82,13 +98,13 @@ private:
 // Constructors and Destructors
 // ------------------------------------ //
 template <typename T>
-SpectralOps<T>::SpectralOps(void) : signal{T(0)}, length{0}, samplingFreq{0.0}, window{WindowType::Rectangular}, windowSize{0}, overlap{0.5}
+SpectralOps<T>::SpectralOps(void) : signal{T(0)}, length{0}, sFreq{0.0}, window{WindowType::Rectangular}, windowSize{0}, overlap{0.5}
 {
     // No window generation is needed for this constructor
 }
 
 template <typename T>
-SpectralOps<T>::SpectralOps(const vector<T> &s) : signal{s}, length{0}, samplingFreq{0.0}, window{WindowType::Rectangular}, windowSize{0}, overlap{0.5}
+SpectralOps<T>::SpectralOps(const vector<T> &s) : signal{s}, length{0}, sFreq{0.0}, window{WindowType::Rectangular}, windowSize{0}, overlap{0.5}
 {
     // No window generation is needed for this constructor
 }
@@ -119,6 +135,36 @@ SpectralOps<T>::~SpectralOps(void)
     signal.clear();
     twiddles.clear();
 }
+// ======================= Operator Overload ================================ //
+// Methods to manipulate the signals using C++ overloaded operators.
+// ========================================================================== //
+// Add two signals in the time domain.
+template <typename T>
+vector<complex<T>> operator+(const vector<complex<T>> &s, const vector<complex<T>> &y)
+{
+    vector<complex<T>> out;
+    const T subCarrier = GetSubCarrier();      // Define the subcarrier frequency (you can adjust this value)
+    const T fs = GetSampleRate();      // Assume the sample rate corresponds to the size of the first signal
+
+    if (s.size() != y.size()) 
+    {
+        cerr<<"Signals must be of the same size to add them."<<endl;
+    }
+
+    out.resize(s.size());
+
+    for (size_t i = 0; i < s.size(); ++i) 
+    {
+      // Compute the complex exponential for the subcarrier modulation
+      complex<T> modulator = polar(1.0, 2.0 * M_PI * subCarrier * i / fs);
+        
+      // Combine the two signals by adding the modulated subcarrier signal
+      out[i] = s[i] + y[i] * modulator;
+    }
+
+    return out;
+}
+
 
 // ======================== Utility Methods ================================= //
 // Utility Methods to precompute operations needed for Spectral Manipulations.
@@ -165,9 +211,102 @@ vector<double> SpectralOps<T>::ToReal(const vector<complex<T>> &s)
         sReal[i] = s[i].real();
     return sReal;
 }
-// ===================================== Stride Permutation FFTs ===================================== //
+// Determine the amount of frequency bins to analyze per second of data.
+template <typename T>
+vector<T> SpectralOps<T>::SetRBW(double rbw, double fs)
+{
+  const int wSiz=static_cast<int>(fs/rbw);
+  // Window is assumed to have been defined by the caller before calling this
+  // method.
+  return GenerateWindow(window,wSiz);
+}
+// ====================== Modulator Methods ================================= //
+// Probably belong to another class.
+// ========================================================================== //
+template <typename T>
+// Method to perform a frequency shift of the center frequency by a const amount
+vector<complex<T>> SpectralOps<T>::Shift(  // Shift the signal in frequency domain.
+  const vector<complex<T>>& s,           // The input signal.
+  const double fShift,                  // The amount to shift it by
+  const double fs)                      // The sample rate of the signal
+{                                       // ---------- Shift ----------------- //
+  vector<complex<T>> sDelay(s.size());  // Our shifted spectrum.
+  T phaseShift=(-2.0*M_PI*fShift/fs);   // Precompute phase shift.
+  complex<T> delayMod(1.0,0.0);         // Initialize modulator to angle 0.
+  for (size_t i=0; i<s.size(); ++i)     // For the existence of our signal..
+  {
+    sDelay[i]=s[i]*delayMod;            // Calculate this frequency bin.
+    delayMod*=polar(1.0,phaseShift);    // Increment the phase.
+  }                                     // Done delay shifting the signal.
+  return sDelay;
+}                                       // ---------- Shift ----------------- //
+
+template<typename T>
+// Method to perform a carrier sweep with a start and stop frequency about the 
+// center frequency
+vector<vector<complex<T>>> SpectralOps<T>::Sweep(
+  const vector<complex<T>>&s,           // The input signal
+  const double fStart,                  // The Start Frequency.
+  const double fCenter,                 // The center frequency
+  const double fStop,                   // The stop frequency
+  const double step,                    // The number of bins to jump
+  const double fs,                      // The sample rate of the signal
+  const WindowType &w,                  // The window to apply to the signal
+  const int wSiz,                       // The size of the window
+  const float ovlap)                    // The overlap factor
+{                                       // ---------- Sweep ----------------- //
+    // -------------------------------- //
+    // First we shift the input signal about the center frequency in 
+    // our spectum down to 0 Hz. This normalizes our signal to simplify analysis.
+    // -------------------------------- //
+  vector<complex<T>> cSig=Shift(s,-fCenter, fs);
+  vector<vector<complex<T>>> sMat;
+    // -------------------------------- //
+    // Precompute the window function to apply to the signal
+    // at each step of the sweep.
+    // -------------------------------- //
+  vector<T> window=GenerateWindow(w,windowSize);  
+    // -------------------------------- //
+    // Scan through different frequency bands relative to the center frequency.
+    // -------------------------------- //
+  for (double freq=fStart; freq<=fStop; freq+=step)
+  {
+    // -------------------------------- //
+    // Having our signal at 0 Hz we observe the behaviour of our signal when 
+    // shifted by various frequencies relative to the central moment. 
+    // -------------------------------- //
+    vector<complex<T>> sShift=Shift(cSig,freq,fs);
+    // -------------------------------- //
+    // Apply the window to the signal to reduce spectral leakage.
+    // -------------------------------- //
+    int wStep=wSiz*(1-ovlap);           // Calculate step size based on overlap.
+    vector<complex<T>> sWindowed(wSiz); // Place to store the windowed signal.
+    for (size_t i=0; i+wSiz<=sShift.size();i+=wStep)
+    {
+      for (size_t j=0; j<wSiz; ++j)
+        sWindowed[j]=sShift[i+j]*window[j]; // Apply the window to the signal.
+    }
+    // -------------------------------- //
+    // Perform an FFT on the windowed signal to analyze the energy 
+    // of the signal at this frequency offset.
+    // -------------------------------- //
+    vector<complex<T>> spectrum=FFT(sWindowed);
+    // -------------------------------- //
+    // Next we recollect the resulting FFT spectrum for this frequency offset,
+    // to obtain the full spectra that represents the signal's behaviour accross
+    // the entire sweep range.
+    // -------------------------------- //
+    sMat.push_back(spectrum);
+  }
+    // -------------------------------- //
+    // Having collected all of the signal's behaviour across the frequency 
+    // sweep, return the full signal's spectra.
+    // -------------------------------- //
+  return sMat;
+} 
+// ==================== Stride Permutation FFTs ============================= //
 // Reference:  https://github.com/AndaOuyang/FFT/blob/main/fft.cpp
-// ================================================================================================ //
+// ========================================================================== //
 // Forward FFT Butterfly operation for the Cooley-Tukey FFT algorithm.
 /* @param last: The previous stage of the FFT.
 /*    Time domain signal iff first iteration of the FFT.
