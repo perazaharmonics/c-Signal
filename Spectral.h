@@ -662,8 +662,9 @@ vector<complex<T>> SpectralOps<T>::ISTFT(
     // were windowed, we overlap-add each segment to obtain total signal's energy
     // contribution. Because the energy of the signal is greater in the
     // samples that lie in the overlapped region, we keep track of these in the 
-    // second step. This allows us to know overshoot the signal's original ampli
-    // -tude in these regions.
+    // second step. This allows us not to overshoot the signal's original ampli
+    // -tude in these regions, as the signal's energy is purposely overlapped
+    // by the spectral windows.
     // -------------------------------- // 
       for (int j=0;j<wSiz && (start+j)<sig.size();++j)
       {
