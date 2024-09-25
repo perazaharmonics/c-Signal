@@ -55,23 +55,26 @@ public:
     vector<complex<T>> operator+(const vector<complex<T>> &s, const vector<complex<T>> &y);
    
     
-    // Spectral Manipulation methods.
-    vector<complex<T>> Shift(const vector<complex<T>>& s, const double fShift, const double fs);
-    vector<vector<complex<T>>> Sweep (const vector<complex<T>>&s, const double fStart,const double fCenter, const double fStop,const double step,const double fs,const WindowType &w, const int wSiz, const float ovlap);
-    
+    // Spectral Transformation methods.
+
     vector<complex<T>> FFTStride(const vector<complex<T>> &s);
     vector<complex<T>> IFFTStride(const vector<complex<T>> &s);
     vector<complex<T>> FFT(const vector<complex<T>>& s);
     vector<complex<T>> IFFT(const vector<complex<T>>& s);
-    vector<complex<T>> Convolution(const vector<complex<T>> &s, const vector<complex<T>> &h);    
     vector<vector<complex<T>>> STFT(const vector<complex<T>> &s, const WindowType &w, const int wSiz, const float ovlap);
     vector<complex<T>> ISTFT(const vector<vector<complex<T>>> &sMat, const WindowType &w, const int wSiz, const float ovlap);
+  // Spectral Computation Methods 
+   
+    vector<complex<T>> Convolution(const vector<complex<T>> &s, const vector<complex<T>> &h);        
+    vector<complex<T>> OLAProcessor(const vector<complex<T>> &s,const WindowType &w, const int wSiz, const float ovlap);
     vector<complex<T>> OLAProcessor(const vector<complex<T>> &s, const vector<complex<T>> &h, const WindowType &w, const int wSiz, const float ovlap);
-    
-    // In reality this can only be a real (due to magnitude) and double
-    // (to prevent aliasing).
+    vector<complex<T>> Shift(const vector<complex<T>>& s, const double fShift, const double fs);
+    vector<vector<complex<T>>> Sweep (const vector<complex<T>>&s, const double fStart,const double fCenter, const double fStop,const double step,const double fs,const WindowType &w, const int wSiz, const float ovlap);
+  // In reality this can only be a real (due to magnitude) and double
+  // (to prevent aliasing).
     vector<T> WelchPSD (const vector<T> &s, const WindowType& w, const int wSiz, const float ovlap, const int fftSiz);
 protected:
+  // Helper Methods
     int UpperLog2(const int N);
     void ForwardButterfly(vector<T> &last, vector<T> &curr, const vector<T> &twiddles, const int rot, const int nBits);
     void BitReversal(vector<T> &s, const int nBits);
@@ -220,90 +223,7 @@ vector<T> SpectralOps<T>::SetRBW(double rbw, double fs)
   // method.
   return GenerateWindow(window,wSiz);
 }
-// ====================== Modulator Methods ================================= //
-// Probably belong to another class.
-// ========================================================================== //
-template <typename T>
-// Method to perform a frequency shift of the center frequency by a const amount
-vector<complex<T>> SpectralOps<T>::Shift(  // Shift the signal in frequency domain.
-  const vector<complex<T>>& s,           // The input signal.
-  const double fShift,                  // The amount to shift it by
-  const double fs)                      // The sample rate of the signal
-{                                       // ---------- Shift ----------------- //
-  vector<complex<T>> sDelay(s.size());  // Our shifted spectrum.
-  T phaseShift=(-2.0*M_PI*fShift/fs);   // Precompute phase shift.
-  complex<T> delayMod(1.0,0.0);         // Initialize modulator to angle 0.
-  for (size_t i=0; i<s.size(); ++i)     // For the existence of our signal..
-  {
-    sDelay[i]=s[i]*delayMod;            // Calculate this frequency bin.
-    delayMod*=polar(1.0,phaseShift);    // Increment the phase.
-  }                                     // Done delay shifting the signal.
-  return sDelay;
-}                                       // ---------- Shift ----------------- //
 
-template<typename T>
-// Method to perform a carrier sweep with a start and stop frequency about the 
-// center frequency
-vector<vector<complex<T>>> SpectralOps<T>::Sweep(
-  const vector<complex<T>>&s,           // The input signal
-  const double fStart,                  // The Start Frequency.
-  const double fCenter,                 // The center frequency
-  const double fStop,                   // The stop frequency
-  const double step,                    // The number of bins to jump
-  const double fs,                      // The sample rate of the signal
-  const WindowType &w,                  // The window to apply to the signal
-  const int wSiz,                       // The size of the window
-  const float ovlap)                    // The overlap factor
-{                                       // ---------- Sweep ----------------- //
-    // -------------------------------- //
-    // First we shift the input signal about the center frequency in 
-    // our spectum down to 0 Hz. This normalizes our signal to simplify analysis.
-    // -------------------------------- //
-  vector<complex<T>> cSig=Shift(s,-fCenter, fs);
-  vector<vector<complex<T>>> sMat;
-    // -------------------------------- //
-    // Precompute the window function to apply to the signal
-    // at each step of the sweep.
-    // -------------------------------- //
-  vector<T> window=GenerateWindow(w,windowSize);  
-    // -------------------------------- //
-    // Scan through different frequency bands relative to the center frequency.
-    // -------------------------------- //
-  for (double freq=fStart; freq<=fStop; freq+=step)
-  {
-    // -------------------------------- //
-    // Having our signal at 0 Hz we observe the behaviour of our signal when 
-    // shifted by various frequencies relative to the central moment. 
-    // -------------------------------- //
-    vector<complex<T>> sShift=Shift(cSig,freq,fs);
-    // -------------------------------- //
-    // Apply the window to the signal to reduce spectral leakage.
-    // -------------------------------- //
-    int wStep=wSiz*(1-ovlap);           // Calculate step size based on overlap.
-    vector<complex<T>> sWindowed(wSiz); // Place to store the windowed signal.
-    for (size_t i=0; i+wSiz<=sShift.size();i+=wStep)
-    {
-      for (size_t j=0; j<wSiz; ++j)
-        sWindowed[j]=sShift[i+j]*window[j]; // Apply the window to the signal.
-    }
-    // -------------------------------- //
-    // Perform an FFT on the windowed signal to analyze the energy 
-    // of the signal at this frequency offset.
-    // -------------------------------- //
-    vector<complex<T>> spectrum=FFT(sWindowed);
-    // -------------------------------- //
-    // Next we recollect the resulting FFT spectrum for this frequency offset,
-    // to obtain the full spectra that represents the signal's behaviour accross
-    // the entire sweep range.
-    // -------------------------------- //
-    sMat.push_back(spectrum);
-  }
-    // -------------------------------- //
-    // Having collected all of the signal's behaviour across the frequency 
-    // sweep, return the full signal's spectra.
-    // -------------------------------- //
-  return sMat;
-} 
 // ==================== Stride Permutation FFTs ============================= //
 // Reference:  https://github.com/AndaOuyang/FFT/blob/main/fft.cpp
 // ========================================================================== //
@@ -683,84 +603,82 @@ vector<vector<complex<T>>> SpectralOps<T>::STFT(const vector<complex<T>> &s,
   int wSiz, 
   const float overlap)
 {
-    // Calculate the step size based on the overlap percentage
-    int step = wSiz * (1 - overlap / 100.0);
-
-    // Calculate the number of segs needed to cover the entire signal
-    int nSegs = (s.size() - wSiz + step) / step;
-
-    // Initialize the resulting STFT matrix (each row is the FFT of a seg)
-    vector<vector<complex<T>>> sMat(nSegs, vector<complex<T>>(wSiz));
-
-    // Generate the window to be applied to each seg
-    vector<T> window = GenerateWindow(windowType, wSiz);
-
-    // Process each seg of the signal
-    for (int i = 0; i < nSegs; ++i)
-    {
-        int start = i * step;              // Calculate the starting index of the seg
-        vector<complex<T>> seg(wSiz, 0.0); // Initialize the seg with zeros
-
-        // Apply the window to the seg and copy the windowed signal
-        // For the size of the window and the remaining signal seg
-        for (int j = 0; j < wSiz && start + j < s.size(); ++j)
-        {
-            seg[j] = s[start + j] * window[j];
-        }
-
-        // Compute the FFT of the windowed seg and store it in the STFT matrix
-        sMat[i] = FFT(seg, windowType);
-    }
-
-    // Return the STFT result (matrix of FFTs of the segs)
-    return sMat;
+  int step = wSiz * (1 - overlap / 100.0);// step size based on the ovlap %
+  int nSegs = (s.size() - wSiz + step) / step;// # segs for the signal.
+  vector<vector<complex<T>>> sMat(nSegs, vector<complex<T>>(wSiz));
+  vector<T> window = GenerateWindow(windowType, wSiz);// Window to be applied.
+    // -------------------------------- //
+    // Process each seg of the signal. Each row of the matrix is a frame of
+    // the signal, and every column a frequency bin inside the windowed segment.
+    // -------------------------------- //
+  for (int i=0;i<nSegs;++i)
+  {   
+      int start = i * step;             // Starting ndx for our current segment.
+      vector<complex<T>> seg(wSiz, 0.0); // Initialize the seg with zeros
+    // -------------------------------- //    
+    // Apply the window to the segment and copy the windowed signal.
+    // For the size of the window and remaining frequency bins of the signal.
+    // -------------------------------- //
+      for (int j = 0; j <wSiz && start+j< s.size(); ++j)
+        seg[j] = s[start + j] * window[j];
+    // -------------------------------- //
+    // Compute the FFT of the windowed seg and store it in the STFT matrix
+    // -------------------------------- //
+      sMat[i] = FFT(seg, windowType);
+  }
+  return sMat;                          // The windowed spectrum.
 }
 template <typename T>
 // Inverse Short-Time-Fourier-Transform Method.
 vector<complex<T>> SpectralOps<T>::ISTFT(
     const vector<vector<complex<T>>> &sMat,// Input STFT matrix
-    const WindowType &w,          // Window type
-    const int wSiz,               // Window size (should be power of 2)
-    const float overlap)            // Overlap percentage (e.g., 50%)
+    const WindowType &w,                // Window type
+    const int wSiz,                     // Window size (should be power of 2)
+    const float ovlap)                  // Overlap percentage (e.g., 50%)
 {
-    // Calculate the step size based on the overlap percentage
-    int step = wSiz * (1 - overlap / 100.0);
-
-    // Calculate the length of the original signal from the STFT segs
-    int len = step * (sMat.size() - 1) + wSiz;
-
-    // Initialize the result signal and the overlap count for normalization
-    vector<complex<T>> sig(len, 0.0);    // Initialize the result signal
-    vector<T> nOverlaps(len, 0.0); // Initialize the overlap count
-
+    int step = wSiz*(1 -ovlap/100.0);// step size based on the ovlap %
+    int len = step*(sMat.size()-1)+wSiz;// Length of the original signal.
+    // --------------------------------- //
+    // Calculate the overlap count for the normalization step.
+    // -------------------------------- //
+    vector<complex<T>> sig(len,0.0);// Initialize the result signal
+    vector<T> nOverlaps(len,0.0); // Initialize the overlap count
     // Generate the window to be applied during the inverse process
     vector<T> window = GenerateWindow(w, wSiz);
-
-    // Process each seg of the STFT matrix
+    // -------------------------------- //
+    //  Process each seg of the signal. Each row of the matrix is a frame of
+    //  of the signal, and each column a frequency bin inside the window.
+    // -------------------------------- //
     for (int i = 0; i < sMat.size(); ++i)
     {
-        int start = i * step; // Calculate the starting index of the seg
-
-        // Compute the IFFT of the current seg
-        vector<complex<T>> seg = IFFT(sMat[i]);
-
-        // Overlap-add the IFFT result to the output signal
-        for (int j = 0; j < wSiz && start + j < sig.size(); ++j)
-        {
-            sig[start + j] += seg[j] * window[j];
-            nOverlaps[start + j] += window[j]; // Keep track of the windowing
-        }
+      int start = i*step;               // Starting ndx of the frame (segment).
+    // -------------------------------- //
+    // Compute the IFFT of the current segment, and get the time-domain short
+    // signal. This allows us to reconstruct it back using its segments. 
+    // -------------------------------- //
+      vector<complex<T>> seg = IFFT(sMat[i]);
+    // -------------------------------- //
+    // Overlap-add the IFFT result to the output signal. Because the segments
+    // were windowed, we overlap-add each segment to obtain total signal's energy
+    // contribution. Because the energy of the signal is greater in the
+    // samples that lie in the overlapped region, we keep track of these in the 
+    // second step. This allows us to know overshoot the signal's original ampli
+    // -tude in these regions.
+    // -------------------------------- // 
+      for (int j=0;j<wSiz && (start+j)<sig.size();++j)
+      {
+        sig[start+j]+=seg[j]*window[j]; // Frame contribution to long signal.
+        nOverlaps[start+j]+=window[j];  // Keep track of Overlapp-Add Windowing process 
+      }
     }
-
-    // Normalize the result by dividing by the overlap count
+    // -------------------------------- //
+    // Normalize the result by dividing by the overlap count. We want to know 
+    // how many times each segment of the signal was affected by the OLA Window
+    // process, so that we can scale the original signal's amplitude accurately.
+    // -------------------------------- //
     for (int i = 0; i < sig.size(); ++i)
-    {
-        if (nOverlaps[i] != 0.0)
-        {
-            sig[i] /= nOverlaps[i];
-        }
-    }
-
+      if (nOverlaps[i] != 0.0)
+        sig[i] /= nOverlaps[i];
     // Return the reconstructed time-domain signal
     return sig;
 }
@@ -771,26 +689,46 @@ vector<complex<T>> SpectralOps<T>::OLAProcessor(
     const vector<complex<T>> &h, // The desired FIR filter.
     const WindowType &w,         // The window used.
     const int wSiz,              // The size of the window.
-    const float overlap)           // The percentage of overlap
+    const float ovlap)           // The percentage of overlap
 {
-    vector<vector<complex<T>>> sMat = STFT(s, w, wSiz, overlap); // STFT of input signal.
-    vector<complex<T>> H = FFT(h);                     // FFT of the FIR filter.
-    const int frames = sMat.size();                    // Number of frames in the STFT matrix.
+    vector<vector<complex<T>>> sMat = STFT(s, w, wSiz, ovlap); // STFT of input signal.
+    vector<complex<T>> H = FFT(h);      // FFT of the FIR filter.
+    const int frames = sMat.size();     // Number of frames in the STFT matrix.
     vector<vector<complex<T>>> sig(frames, vector<complex<T>>(wSiz));
-    // ---------------------------------- //
+    // -------------------------------- //
     // Perform element-wise multiplication of the STFTs
-    // ---------------------------------- //
-    for (int i = 0; i < frames; ++i)
-    {
-        for (int j = 0; j < wSiz; ++j)
-        {
-            sig[i][j] = sMat[i][j] * H[j];
-        }
-    }
-    // ---------------------------------- //
+    // -------------------------------- //
+    for (int i = 0;i<frames;++i)        // For the number of frames...
+      for (int j=0;j <wSiz; ++j)        // .. and the freq bins in the window.
+        sig[i][j]=sMat[i][j]*H[j];      // Convlute the short signal.
+    // -------------------------------- //
     // Perform the inverse STFT to get the filtered time-domain signal.
-    // ---------------------------------- //
-    return ISTFT(sig, w, wSiz, overlap);
+    // -------------------------------- //
+    return ISTFT(sig, w, wSiz, ovlap);
+}
+// vector<complex<T>> OLAProcessor(const vector<complex<T>> &s, const vector<complex<T>> &h, const WindowType &w, const int wSiz, const float ovlap)
+template <typename T>
+vector<complex<T>> SpectralOps<T>::OLAProcessor(
+    const vector<complex<T>> &s, // The input signal.
+    const WindowType &w,         // The window used.
+    const int wSiz,              // The size of the window.
+    const float ovlap)           // The percentage of overlap
+{
+    vector<vector<complex<T>>> sMat = STFT(s, w, wSiz, ovlap);// STFT of input signal.
+    vector<complex<T>> H(wSiz,complex<T>(0.0,0.0));// Dummy Impulse filter.
+    vector<complex<T>> H = FFT(h);      // FFT of the FIR filter.
+    const int frames = sMat.size();     // Number of frames in the STFT matrix.
+    vector<vector<complex<T>>> sig(frames, vector<complex<T>>(wSiz));
+    // -------------------------------- //
+    // Perform element-wise multiplication of the STFTs
+    // -------------------------------- //
+    for (int i = 0;i<frames;++i)        // For the number of frames...
+      for (int j=0;j <wSiz; ++j)        // .. and the freq bins in the window.
+        sig[i][j]=sMat[i][j]*H[j];      // Convlute the short signal.
+    // -------------------------------- //
+    // Perform the inverse STFT to get the filtered time-domain signal.
+    // -------------------------------- //
+    return ISTFT(sig, w, wSiz, ovlap);
 }
 // Determine the power sepctral density of a windowed signal using Welch's method.
 template <typename T>
@@ -846,4 +784,80 @@ vector<T> SpectralOps<T>::WelchPSD(
   return vector<T>(pxxAvg.begin(),pxxAvg.being()+fftSiz/2+1);
 
 }
+template <typename T>
+// Method to perform a frequency shift of the center frequency by a const amount
+vector<complex<T>> SpectralOps<T>::Shift(  // Shift the signal in frequency domain.
+  const vector<complex<T>>& s,           // The input signal.
+  const double fShift,                  // The amount to shift it by
+  const double fs)                      // The sample rate of the signal
+{                                       // ---------- Shift ----------------- //
+  vector<complex<T>> sDelay(s.size());  // Our shifted spectrum.
+  T phaseShift=(-2.0*M_PI*fShift/fs);   // Precompute phase shift.
+  complex<T> delayMod(1.0,0.0);         // Initialize modulator to angle 0.
+  for (size_t i=0; i<s.size(); ++i)     // For the existence of our signal..
+  {
+    sDelay[i]=s[i]*delayMod;            // Calculate this frequency bin.
+    delayMod*=polar(1.0,phaseShift);    // Increment the phase.
+  }                                     // Done delay shifting the signal.
+  return sDelay;
+}                                       // ---------- Shift ----------------- //
+
+template<typename T>
+// Method to perform a carrier sweep with a start and stop frequency about the 
+// center frequency
+vector<vector<complex<T>>> SpectralOps<T>::Sweep(
+  const vector<complex<T>>&s,           // The input signal
+  const double fStart,                  // The Start Frequency.
+  const double fCenter,                 // The center frequency
+  const double fStop,                   // The stop frequency
+  const double step,                    // The number of bins to jump
+  const double fs,                      // The sample rate of the signal
+  const WindowType &w,                  // The window to apply to the signal
+  const int wSiz,                       // The size of the window
+  const float ovlap)                    // The overlap factor
+{                                       // ---------- Sweep ----------------- //
+    // -------------------------------- //
+    // First we shift the input signal about the center frequency in 
+    // our spectum down to 0 Hz. This normalizes our signal to simplify analysis.
+    // -------------------------------- //
+  vector<complex<T>> cSig=Shift(s,-fCenter, fs);
+  vector<vector<complex<T>>> sMat; 
+    // -------------------------------- //
+    // Scan through different frequency bands relative to the center frequency.
+    // -------------------------------- //
+  for (double freq=fStart; freq<=fStop; freq+=step)
+  {
+    // -------------------------------- //
+    // Having our signal at 0 Hz we observe the behaviour of our signal when 
+    // shifted by various frequencies relative to the central moment. 
+    // -------------------------------- //
+    vector<complex<T>> sShift=Shift(cSig,freq,fs);
+    // -------------------------------- //
+    // Apply the window to the signal to reduce spectral leakage.
+    // -------------------------------- //
+    vector<complex<T>> S=OLAProcessor(sShift,w,wSiz,ovlap);
+    // -------------------------------- //
+    // Perform an FFT on the windowed signal to analyze the energy 
+    // of the signal at this frequency offset.
+    // -------------------------------- //
+    vector<complex<T>> spectrum=FFT(sWindowed);
+    // -------------------------------- //
+    // Normalize the FFT result by a suitable factor (maybe wSiz?) This should
+    // distribute the energy across the window.
+    // -------------------------------- //
+    for (size_T i=0;i<spectrum.size();++i)
+      spectrum[i]/=static_cast<T>(wSiz);
+    // -------------------------------- //
+    // Next we recollect the resulting FFT spectrum for this frequency offset,
+    // to obtain the full spectra that represents the signal's behaviour accross
+    // the entire sweep range.
+    // -------------------------------- //
+    sMat.push_back(spectrum);
+  }
+    // -------------------------------- //
+    // Having collected all of the signal's behaviour across the frequency 
+    // sweep, return the full signal's spectra.
+    // -------------------------------- //
+  return sMat;
+} 
 #endif // SPECTRALOPS_H
