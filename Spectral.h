@@ -146,7 +146,7 @@ template <typename T>
 vector<complex<T>> operator+(const vector<complex<T>> &s, const vector<complex<T>> &y)
 {
     vector<complex<T>> out;
-    const T subCarrier = GetSubCarrier();      // Define the subcarrier frequency (you can adjust this value)
+    const T subCarrier = GetSubCarrier();      // Define the subcarrier frequency
     const T fs = GetSampleRate();      // Assume the sample rate corresponds to the size of the first signal
 
     if (s.size() != y.size()) 
