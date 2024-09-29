@@ -159,7 +159,7 @@ vector<complex<T>> operator+(const vector<complex<T>> &s, const vector<complex<T
     for (size_t i = 0; i < s.size(); ++i) 
     {
       // Compute the complex exponential for the subcarrier modulation
-      complex<T> modulator = polar(1.0, 2.0 * M_PI * subCarrier * i / fs);
+      complex<T> modulator = polar(1.0, -2.0 * M_PI * subCarrier * i / fs);
         
       // Combine the two signals by adding the modulated subcarrier signal
       out[i] = s[i] + y[i] * modulator;
